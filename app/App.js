@@ -11,7 +11,7 @@ const engineMap = {
 };
 
 // Base absoluta para fetch, funciona local e no GitHub Pages
-const basePath = window.location.hostname === "localhost" || window.location.protocol === "file:"
+const basePath = window.location.hostname === "localhost" || window.location.protocol === "file:" || window.location.hostname.includes('192.168.1')
   ? "" // localhost: fetch relativo funciona
   : `${window.location.origin}/vertex`; // GitHub Pages: caminho absoluto para o repo
 

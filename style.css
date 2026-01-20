@@ -53,3 +53,18 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Evita o pull-to-refresh do navegador em elementos interativos */
+.draggable-item {
+    touch-action: none; /* impede scroll/pull-to-refresh */
+    -ms-touch-action: none;
+}
+
+.match-item {
+  touch-action: none; /* já impede o comportamento padrão de scroll do elemento */
+  -ms-touch-action: none;
+  user-select: none; /* impede seleção de texto durante drag */
+}
+#game-container {
+  overscroll-behavior: contain; /* impede pull-to-refresh no container */
+}

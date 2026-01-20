@@ -1,36 +1,31 @@
 export class MatchEngine {
   constructor(content, primaryKey) {
-    console.log(content)
     this.content = content;
-    this.primaryKey = 'primary';
+    this.primaryKey = primaryKey || 'primary';
     this.container = null;
 
     this.state = {
       columns: [],
-      columnItems: {},   // { coluna: [valores] }
-      correctMatches: {} // "primary|valor" -> {coluna: valor}
+      columnItems: {},
+      correctMatches: {}
     };
 
     this.connections = [];
-    this.dragging = null;
   }
 
   start(container) {
     this.container = container;
     if (!this.content?.data?.length) return;
 
-    // Extrai todas as chaves de forma limpa
     let keys = Object.keys(this.content.data[0]).filter(k => k != null);
     let otherCols = keys.filter(k => k !== this.primaryKey);
 
-    // Ordena colunas conforme regra: 3 → primária centro, 2 → primária esquerda
     let columns;
     if (otherCols.length === 2) columns = [otherCols[0], this.primaryKey, otherCols[1]];
     else if (otherCols.length === 1) columns = [this.primaryKey, otherCols[0]];
     else if (otherCols.length === 0) columns = [this.primaryKey];
     else columns = [this.primaryKey, ...otherCols];
 
-    // Cria valores únicos por coluna, mas **somente os valores que realmente existem para cada coluna**
     const columnItems = {};
     columns.forEach(col => {
       const vals = [];
@@ -40,7 +35,6 @@ export class MatchEngine {
       columnItems[col] = vals;
     });
 
-    // Correspondência correta
     const correctMatches = {};
     this.content.data.forEach(d => {
       const key = `${this.primaryKey}|${d[this.primaryKey]}`;
@@ -54,7 +48,6 @@ export class MatchEngine {
     this.render();
   }
 
-  // Função utilitária para embaralhar array
   shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -99,7 +92,6 @@ export class MatchEngine {
       label.style.marginBottom = "8px";
       colDiv.appendChild(label);
 
-      // 🔹 Embaralhar os valores antes de renderizar
       const shuffledValues = this.shuffleArray([...this.state.columnItems[col]]);
 
       shuffledValues.forEach(val => {
@@ -110,12 +102,11 @@ export class MatchEngine {
         itemDiv.style.border = "1px solid #333";
         itemDiv.style.borderRadius = "4px";
         itemDiv.style.background = "#fff";
-        itemDiv.style.cursor = "pointer";
+        itemDiv.style.cursor = "grab";
+
+        itemDiv.classList.add("match-item");
         itemDiv.dataset.col = col;
         itemDiv.dataset.value = val;
-
-        itemDiv.onmousedown = e => this.startConnection(e, col, val);
-        itemDiv.onmouseup = e => this.endConnection(e, col, val);
 
         colDiv.appendChild(itemDiv);
       });
@@ -123,82 +114,104 @@ export class MatchEngine {
       columnsDiv.appendChild(colDiv);
     });
 
-    this.updateConnections();
+    this.initInteract(); // inicializa Interact.js nos elementos
   }
 
+  initInteract() {
+    const container = this.container;
+    const svg = this.svg;
 
-  startConnection(event, col, value) {
-    event.preventDefault();
-    this.dragging = { col, value, x: event.clientX, y: event.clientY, connected: false };
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("stroke", "black");
-    line.setAttribute("stroke-width", "2");
-    this.svg.appendChild(line);
-    this.dragging.line = line;
+    let currentDrag = null;
 
-    const mouseMoveHandler = e => {
-      line.setAttribute("x1", this.dragging.x);
-      line.setAttribute("y1", this.dragging.y);
-      line.setAttribute("x2", e.clientX);
-      line.setAttribute("y2", e.clientY);
-    };
+    // Draggables
+    container.querySelectorAll('.match-item').forEach(item => {
+      interact(item).draggable({
+        inertia: true,
+        autoScroll: true,
+        modifiers: [
+          interact.modifiers.restrictRect({
+            restriction: container,
+            endOnly: true
+          })
+        ],
+        listeners: {
+          start: event => {
+            currentDrag = {
+              item,
+              col: item.dataset.col,
+              value: item.dataset.value,
+              line: document.createElementNS("http://www.w3.org/2000/svg", "line")
+            };
+            const line = currentDrag.line;
+            line.setAttribute("stroke", "black");
+            line.setAttribute("stroke-width", "2");
+            svg.appendChild(line);
 
-    const mouseUpHandler = e => {
-      document.removeEventListener("mousemove", mouseMoveHandler);
-      document.removeEventListener("mouseup", mouseUpHandler);
-      if (!this.dragging.connected) this.svg.removeChild(line);
-      this.dragging = null;
-    };
+            document.body.style.touchAction = 'none'; // impede pull-to-refresh
+          },
+          move: event => {
+            const x = event.clientX;
+            const y = event.clientY;
 
-    document.addEventListener("mousemove", mouseMoveHandler);
-    document.addEventListener("mouseup", mouseUpHandler);
+            const line = currentDrag.line;
+            const rect = currentDrag.item.getBoundingClientRect();
+            const svgRect = svg.getBoundingClientRect();
+            line.setAttribute("x1", rect.left + rect.width / 2 - svgRect.left);
+            line.setAttribute("y1", rect.top + rect.height / 2 - svgRect.top);
+            line.setAttribute("x2", x - svgRect.left);
+            line.setAttribute("y2", y - svgRect.top);
+          },
+          end: event => {
+            if (!currentDrag) return;
+
+            // Descobre elemento alvo
+            const touchX = event.clientX;
+            const touchY = event.clientY;
+            const dropEl = document.elementFromPoint(touchX, touchY);
+            if (dropEl && dropEl.classList.contains('match-item') && dropEl.dataset.col !== currentDrag.col) {
+              this.makeConnection(currentDrag.item, dropEl);
+            }
+
+            // Remove linha temporária se não conectou
+            svg.removeChild(currentDrag.line);
+            currentDrag = null;
+            document.body.style.touchAction = 'auto'; // restaura scroll
+            this.updateConnections();
+          }
+        }
+      });
+    });
   }
 
-  endConnection(event, col, value) {
-    if (!this.dragging) return;
-    if (this.dragging.col === col) return;
+  makeConnection(fromItem, toItem) {
+    const fromCol = fromItem.dataset.col;
+    const fromVal = fromItem.dataset.value;
+    const toCol = toItem.dataset.col;
+    const toVal = toItem.dataset.value;
 
     let status = "wrong";
 
-    // 1️⃣ Primária como origem
-    if (this.dragging.col === this.primaryKey) {
-      const key = `${this.primaryKey}|${this.dragging.value}`;
-      if (
-        this.state.correctMatches[key] &&
-        this.state.correctMatches[key][col] === value
-      ) {
+    if (fromCol === this.primaryKey) {
+      const key = `${this.primaryKey}|${fromVal}`;
+      if (this.state.correctMatches[key] && this.state.correctMatches[key][toCol] === toVal) {
         status = "correct";
       }
-    }
-    // 2️⃣ Primária como destino
-    else if (col === this.primaryKey) {
-      // Encontrar a chave do primary no objeto onde primary = value do destino
-      const dataItem = this.content.data.find(d => d[this.primaryKey] === value);
-      if (dataItem && dataItem[this.dragging.col] === this.dragging.value) {
-        status = "correct";
-      }
-    }
-    // 3️⃣ Ligação entre colunas secundárias (não-primary)
-    else {
-      // Opcional: não validar, ou você pode implementar validação entre colunas secundárias
-      status = "wrong";
+    } else if (toCol === this.primaryKey) {
+      const dataItem = this.content.data.find(d => d[this.primaryKey] === toVal);
+      if (dataItem && dataItem[fromCol] === fromVal) status = "correct";
     }
 
     this.connections.push({
-      from: { col: this.dragging.col, value: this.dragging.value },
-      to: { col, value },
+      from: { col: fromCol, value: fromVal },
+      to: { col: toCol, value: toVal },
       status
     });
-
-    this.dragging.connected = true;
-    this.updateConnections();
   }
 
-
   updateConnections() {
-    this.svg.innerHTML = "";
+    const svg = this.svg;
+    svg.innerHTML = "";
 
-    // Mapear índice das colunas para saber direção
     const colIndex = {};
     this.state.columns.forEach((col, i) => colIndex[col] = i);
 
@@ -209,13 +222,11 @@ export class MatchEngine {
 
       const fromRect = fromEl.getBoundingClientRect();
       const toRect = toEl.getBoundingClientRect();
-      const svgRect = this.svg.getBoundingClientRect();
+      const svgRect = svg.getBoundingClientRect();
 
-      // Determinar direção
       const fromIdx = colIndex[conn.from.col];
       const toIdx = colIndex[conn.to.col];
 
-      // Se for para a direita, sai da direita; se para a esquerda, sai da esquerda
       const x1 = fromIdx < toIdx
         ? fromRect.right - svgRect.left
         : fromRect.left - svgRect.left;
@@ -233,17 +244,13 @@ export class MatchEngine {
       line.setAttribute("y2", y2);
       line.setAttribute("stroke", conn.status === "correct" ? "green" : "red");
       line.setAttribute("stroke-width", "2");
-      this.svg.appendChild(line);
+      svg.appendChild(line);
 
-      // Fundo colorido dos itens
-      const bg = conn.status === "correct"
-        ? "rgba(0,255,0,0.2)"
-        : "rgba(255,0,0,0.2)";
+      const bg = conn.status === "correct" ? "rgba(0,255,0,0.2)" : "rgba(255,0,0,0.2)";
       fromEl.style.background = bg;
       toEl.style.background = bg;
     });
   }
-
 
   findItemElement(col, value) {
     return this.container.querySelector(`[data-col="${col}"][data-value="${value}"]`);

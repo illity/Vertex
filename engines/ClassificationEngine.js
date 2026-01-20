@@ -17,7 +17,6 @@ export class ClassificationEngine {
         this.container = container;
         const categories = Array.from(new Set(this.content.data.map(i => i.category)));
 
-        // Cria as linhas e embaralha **uma única vez**
         const rows = this.content.data.map((item, idx) => ({
             id: idx.toString(),
             label: item.label,
@@ -28,7 +27,7 @@ export class ClassificationEngine {
 
         this.state = {
             categories,
-            rows: this.shuffleArray(rows) // embaralha apenas aqui
+            rows: this.shuffleArray(rows)
         };
 
         this.render(container);
@@ -38,7 +37,7 @@ export class ClassificationEngine {
         if (!container || !this.state) return;
         container.innerHTML = "";
 
-        // Categorias
+        // --- Categorias ---
         const categoriesDiv = document.createElement("div");
         categoriesDiv.style.display = "flex";
         categoriesDiv.style.flexWrap = "wrap";
@@ -59,9 +58,7 @@ export class ClassificationEngine {
             label.style.marginBottom = "8px";
             zoneDiv.appendChild(label);
 
-            // Itens já categorizados — mantém a ordem original
             const itemsInCategory = this.state.rows.filter(r => r.currentCategory === cat);
-
             itemsInCategory.forEach(r => {
                 const itemDiv = document.createElement("div");
                 itemDiv.textContent = r.label;
@@ -71,25 +68,26 @@ export class ClassificationEngine {
                 itemDiv.style.borderRadius = "4px";
                 itemDiv.style.background =
                     r.correct === true ? "rgba(160, 230, 160, 0.6)" :
-                    r.correct === false ? "rgba(246, 160, 160, 0.6)" : "#fff";
-
+                        r.correct === false ? "rgba(246, 160, 160, 0.6)" : "#fff";
                 zoneDiv.appendChild(itemDiv);
             });
 
-            // Drag & drop
-            zoneDiv.ondragover = e => e.preventDefault();
-            zoneDiv.ondrop = e => {
-                e.preventDefault();
-                const data = JSON.parse(e.dataTransfer.getData("text/plain"));
-                this.onDrop(data.id, cat);
-            };
-
             categoriesDiv.appendChild(zoneDiv);
+
+            // Interact.js: tornar zona droppable
+            interact(zoneDiv).dropzone({
+                accept: '.draggable-item',
+                overlap: 0.5,
+                ondrop: event => {
+                    const itemId = event.relatedTarget.dataset.id;
+                    this.onDrop(itemId, cat);
+                }
+            });
         });
 
         container.appendChild(categoriesDiv);
 
-        // Draggables restantes — mantém ordem do estado
+        // --- Draggables ---
         const draggablesDiv = document.createElement("div");
         draggablesDiv.style.display = "flex";
         draggablesDiv.style.flexWrap = "wrap";
@@ -101,19 +99,52 @@ export class ClassificationEngine {
         remainingItems.forEach(r => {
             const itemDiv = document.createElement("div");
             itemDiv.textContent = r.label;
+            itemDiv.classList.add("draggable-item"); // importante para Interact.js
+            itemDiv.dataset.id = r.id;
             itemDiv.style.padding = "4px 8px";
             itemDiv.style.border = "1px solid #333";
             itemDiv.style.borderRadius = "4px";
             itemDiv.style.background = "#fff";
             itemDiv.style.cursor = "grab";
-            itemDiv.draggable = true;
-
-            itemDiv.ondragstart = e => {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", JSON.stringify({ id: r.id }));
-            };
 
             draggablesDiv.appendChild(itemDiv);
+
+            // Interact.js: tornar item arrastável
+            interact(itemDiv).draggable({
+                inertia: true,
+                modifiers: [
+                    interact.modifiers.restrictRect({
+                        restriction: container,
+                        endOnly: true
+                    })
+                ],
+                autoScroll: true,
+                listeners: {
+                    start: event => {
+                        // Impede scroll da página enquanto arrasta
+                        document.body.style.touchAction = 'none';
+                    },
+                    move: event => {
+                        const target = event.target;
+                        const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                        const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+
+                        target.style.transform = `translate(${x}px, ${y}px)`;
+                        target.setAttribute('data-x', x);
+                        target.setAttribute('data-y', y);
+                    },
+                    end: event => {
+                        // Restaura scroll normal
+                        document.body.style.touchAction = 'auto';
+
+                        // Volta à posição original após soltar
+                        event.target.style.transform = 'none';
+                        event.target.removeAttribute('data-x');
+                        event.target.removeAttribute('data-y');
+                    }
+                }
+            });
+
         });
 
         container.appendChild(draggablesDiv);
