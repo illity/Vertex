@@ -11,15 +11,19 @@ const engineMap = {
   MatchEngine: MatchEngine
 };
 
-// Detecta se está rodando localmente ou no GitHub Pages
-// - Localhost: caminhos relativos normais
-// - GitHub Pages: adiciona o nome do repositório
+// Caminho base absoluto
+// Para GitHub Pages: inclui nome do repositório
+// Para localhost/file://: vazio
 const basePath = window.location.hostname === "localhost" || window.location.protocol === "file:"
   ? ""
-  : "/vertex"; // <--- Substitua "vertex" pelo nome do seu repositório se mudar
+  : "/vertex"; // substitua "vertex" pelo nome do seu repositório
 
 async function startMenu() {
-  const res = await fetch(`${basePath}/content/index.json`);
+  // Use basePath absoluto + /content
+  const url = `${basePath}/content/index.json`;
+  console.log("Buscando conteúdo em:", url); // Para debug
+
+  const res = await fetch(url);
   if (!res.ok) {
     console.error("Não foi possível carregar o index.json:", res.status, res.statusText);
     return;
@@ -31,7 +35,10 @@ async function startMenu() {
 }
 
 async function startGame(content) {
-  const res = await fetch(`${basePath}/content/${content.file}`);
+  const url = `${basePath}/content/${content.file}`;
+  console.log("Buscando arquivo de jogo em:", url); // Para debug
+
+  const res = await fetch(url);
   if (!res.ok) {
     console.error(`Não foi possível carregar ${content.file}:`, res.status, res.statusText);
     return;
