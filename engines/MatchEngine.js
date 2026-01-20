@@ -190,15 +190,17 @@ export class MatchEngine {
     const toVal = toItem.dataset.value;
 
     let status = "wrong";
-
     if (fromCol === this.primaryKey) {
       const key = `${this.primaryKey}|${fromVal}`;
-      if (this.state.correctMatches[key] && this.state.correctMatches[key][toCol] === toVal) {
+      console.log(fromCol, this.primaryKey, key)
+      console.log(this.state.correctMatches[key])
+      console.log(this.state.correctMatches[key][toCol], toVal)
+      if (this.state.correctMatches[key] && this.state.correctMatches[key][toCol] == toVal) {
         status = "correct";
       }
     } else if (toCol === this.primaryKey) {
-      const dataItem = this.content.data.find(d => d[this.primaryKey] === toVal);
-      if (dataItem && dataItem[fromCol] === fromVal) status = "correct";
+      const dataItem = this.content.data.find(d => d[this.primaryKey] == toVal);
+      if (dataItem && dataItem[fromCol] == fromVal) status = "correct";
     }
 
     this.connections.push({
