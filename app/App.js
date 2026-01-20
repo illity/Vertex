@@ -11,21 +11,17 @@ const engineMap = {
   MatchEngine: MatchEngine
 };
 
-// Determina o caminho base de onde está o index.html
-const basePath = (() => {
-  // Pega a URL da página atual
-  const path = window.location.pathname;
+// Função para obter caminho relativo ao arquivo atual
+function getBasePath() {
+  // `import.meta.url` retorna algo como:
+  // "https://illity.github.io/vertex/App.js" ou "file:///C:/projeto/App.js"
+  const url = new URL(import.meta.url);
+  // Remove o arquivo (App.js) da URL
+  url.pathname = url.pathname.replace(/\/[^\/]*$/, "");
+  return url.href;
+}
 
-  // Se estiver rodando localmente (localhost ou file://), remove apenas o arquivo da URL
-  if (window.location.hostname === "localhost" || window.location.protocol === "file:") {
-    return path.replace(/\/[^\/]*$/, "");
-  }
-
-  // Se estiver no GitHub Pages, remove tudo após o nome do repositório
-  // Exemplo: /vertex/index.html -> /vertex
-  const repoMatch = path.match(/^\/[^\/]+/);
-  return repoMatch ? repoMatch[0] : "";
-})();
+const basePath = getBasePath();
 
 async function startMenu() {
   const res = await fetch(`${basePath}/content/index.json`);
