@@ -59,23 +59,26 @@ export class MatchEngine {
   render() {
     const container = this.container;
     container.innerHTML = "";
+    container.style.position = "relative";
 
-    // SVG para linhas
+    // SVG SOBRE AS COLUNAS
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.style.position = "absolute";
     svg.style.top = "0";
     svg.style.left = "0";
     svg.style.width = "100%";
     svg.style.height = "100%";
-    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "10";
+    svg.style.pointerEvents = "none"; // SVG não captura clique
     container.appendChild(svg);
     this.svg = svg;
 
-    // Colunas
+    // COLUNAS
     const columnsDiv = document.createElement("div");
     columnsDiv.style.display = "flex";
     columnsDiv.style.gap = "16px";
     columnsDiv.style.position = "relative";
+    columnsDiv.style.zIndex = "1";
     container.appendChild(columnsDiv);
 
     this.state.columns.forEach(col => {
@@ -114,17 +117,15 @@ export class MatchEngine {
       columnsDiv.appendChild(colDiv);
     });
 
-    this.initInteract(); // inicializa Interact.js nos elementos
+    this.initInteract();
   }
 
   initInteract() {
     const container = this.container;
     const svg = this.svg;
-
     let currentDrag = null;
 
-    // Draggables
-    container.querySelectorAll('.match-item').forEach(item => {
+    container.querySelectorAll(".match-item").forEach(item => {
       interact(item).draggable({
         inertia: true,
         autoScroll: true,
@@ -135,47 +136,48 @@ export class MatchEngine {
           })
         ],
         listeners: {
-          start: event => {
+          start: () => {
             currentDrag = {
               item,
               col: item.dataset.col,
               value: item.dataset.value,
               line: document.createElementNS("http://www.w3.org/2000/svg", "line")
             };
+
             const line = currentDrag.line;
             line.setAttribute("stroke", "black");
             line.setAttribute("stroke-width", "2");
             svg.appendChild(line);
 
-            document.body.style.touchAction = 'none'; // impede pull-to-refresh
+            document.body.style.touchAction = "none";
           },
-          move: event => {
-            const x = event.clientX;
-            const y = event.clientY;
 
-            const line = currentDrag.line;
+          move: event => {
             const rect = currentDrag.item.getBoundingClientRect();
             const svgRect = svg.getBoundingClientRect();
+            const line = currentDrag.line;
+
             line.setAttribute("x1", rect.left + rect.width / 2 - svgRect.left);
             line.setAttribute("y1", rect.top + rect.height / 2 - svgRect.top);
-            line.setAttribute("x2", x - svgRect.left);
-            line.setAttribute("y2", y - svgRect.top);
+            line.setAttribute("x2", event.clientX - svgRect.left);
+            line.setAttribute("y2", event.clientY - svgRect.top);
           },
+
           end: event => {
             if (!currentDrag) return;
 
-            // Descobre elemento alvo
-            const touchX = event.clientX;
-            const touchY = event.clientY;
-            const dropEl = document.elementFromPoint(touchX, touchY);
-            if (dropEl && dropEl.classList.contains('match-item') && dropEl.dataset.col !== currentDrag.col) {
+            const dropEl = document.elementFromPoint(event.clientX, event.clientY);
+            if (
+              dropEl &&
+              dropEl.classList.contains("match-item") &&
+              dropEl.dataset.col !== currentDrag.col
+            ) {
               this.makeConnection(currentDrag.item, dropEl);
             }
 
-            // Remove linha temporária se não conectou
             svg.removeChild(currentDrag.line);
             currentDrag = null;
-            document.body.style.touchAction = 'auto'; // restaura scroll
+            document.body.style.touchAction = "auto";
             this.updateConnections();
           }
         }
@@ -190,12 +192,13 @@ export class MatchEngine {
     const toVal = toItem.dataset.value;
 
     let status = "wrong";
+
     if (fromCol === this.primaryKey) {
       const key = `${this.primaryKey}|${fromVal}`;
-      console.log(fromCol, this.primaryKey, key)
-      console.log(this.state.correctMatches[key])
-      console.log(this.state.correctMatches[key][toCol], toVal)
-      if (this.state.correctMatches[key] && this.state.correctMatches[key][toCol] == toVal) {
+      if (
+        this.state.correctMatches[key] &&
+        this.state.correctMatches[key][toCol] == toVal
+      ) {
         status = "correct";
       }
     } else if (toCol === this.primaryKey) {
@@ -204,6 +207,7 @@ export class MatchEngine {
     }
 
     this.connections.push({
+      id: crypto.randomUUID(),
       from: { col: fromCol, value: fromVal },
       to: { col: toCol, value: toVal },
       status
@@ -215,46 +219,43 @@ export class MatchEngine {
     svg.innerHTML = "";
 
     const colIndex = {};
-    this.state.columns.forEach((col, i) => colIndex[col] = i);
+    this.state.columns.forEach((c, i) => (colIndex[c] = i));
 
     this.connections.forEach(conn => {
       const fromEl = this.findItemElement(conn.from.col, conn.from.value);
       const toEl = this.findItemElement(conn.to.col, conn.to.value);
       if (!fromEl || !toEl) return;
 
-      const fromRect = fromEl.getBoundingClientRect();
-      const toRect = toEl.getBoundingClientRect();
-      const svgRect = svg.getBoundingClientRect();
+      const fr = fromEl.getBoundingClientRect();
+      const tr = toEl.getBoundingClientRect();
+      const sr = svg.getBoundingClientRect();
 
-      const fromIdx = colIndex[conn.from.col];
-      const toIdx = colIndex[conn.to.col];
-
-      const x1 = fromIdx < toIdx
-        ? fromRect.right - svgRect.left
-        : fromRect.left - svgRect.left;
-      const y1 = fromRect.top + fromRect.height / 2 - svgRect.top;
-
-      const x2 = fromIdx < toIdx
-        ? toRect.left - svgRect.left
-        : toRect.right - svgRect.left;
-      const y2 = toRect.top + toRect.height / 2 - svgRect.top;
+      const leftToRight = colIndex[conn.from.col] < colIndex[conn.to.col];
 
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", x1);
-      line.setAttribute("y1", y1);
-      line.setAttribute("x2", x2);
-      line.setAttribute("y2", y2);
+      line.setAttribute("x1", leftToRight ? fr.right - sr.left : fr.left - sr.left);
+      line.setAttribute("y1", fr.top + fr.height / 2 - sr.top);
+      line.setAttribute("x2", leftToRight ? tr.left - sr.left : tr.right - sr.left);
+      line.setAttribute("y2", tr.top + tr.height / 2 - sr.top);
       line.setAttribute("stroke", conn.status === "correct" ? "green" : "red");
-      line.setAttribute("stroke-width", "2");
-      svg.appendChild(line);
+      line.setAttribute("stroke-width", "3");
 
-      const bg = conn.status === "correct" ? "rgba(0,255,0,0.2)" : "rgba(255,0,0,0.2)";
-      fromEl.style.background = bg;
-      toEl.style.background = bg;
+      line.style.pointerEvents = "stroke";
+      line.style.cursor = "pointer";
+
+      line.addEventListener("click", e => {
+        e.stopPropagation();
+        this.connections = this.connections.filter(c => c.id !== conn.id);
+        this.updateConnections();
+      });
+
+      svg.appendChild(line);
     });
   }
 
   findItemElement(col, value) {
-    return this.container.querySelector(`[data-col="${col}"][data-value="${value}"]`);
+    return this.container.querySelector(
+      `[data-col="${col}"][data-value="${value}"]`
+    );
   }
 }
